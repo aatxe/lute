@@ -52,21 +52,21 @@ double getSecondsFromTimespec(uv_timespec64_t timespec)
 
 uv_timespec64_t getTimespecFromSeconds(double seconds)
 {
-	int64_t sec = static_cast<int64_t>(seconds);
-	int32_t nsec = static_cast<int32_t>(fmod(seconds, 1) * NANOSECONDS_PER_SECOND);
-	return {sec, nsec};
+    int64_t sec = static_cast<int64_t>(seconds);
+    int32_t nsec = static_cast<int32_t>(fmod(seconds, 1) * NANOSECONDS_PER_SECOND);
+    return {sec, nsec};
 }
 
 uint64_t getNanosecondsFromTimespec(uv_timespec64_t timespec)
 {
-	return static_cast<uint64_t>(timespec.tv_sec) * static_cast<uint64_t>(NANOSECONDS_PER_SECOND) + static_cast<uint64_t>(timespec.tv_nsec);
+    return static_cast<uint64_t>(timespec.tv_sec) * static_cast<uint64_t>(NANOSECONDS_PER_SECOND) + static_cast<uint64_t>(timespec.tv_nsec);
 }
 
 uv_timespec64_t getTimespecFromNanoseconds(int64_t nanoseconds)
 {
-	int64_t sec = nanoseconds / NANOSECONDS_PER_SECOND ;
-	int32_t nsec = static_cast<int32_t>(fmod(nanoseconds, NANOSECONDS_PER_SECOND));
-	return {sec, nsec};
+    int64_t sec = nanoseconds / NANOSECONDS_PER_SECOND;
+    int32_t nsec = static_cast<int32_t>(fmod(nanoseconds, NANOSECONDS_PER_SECOND));
+    return {sec, nsec};
 }
 
 // Durations
@@ -440,6 +440,17 @@ int lua_weeks(lua_State* L)
 
 } // namespace duration
 
+
+static int system_instance_unix(lua_State* L)
+{
+
+    auto now = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
+
+    lua_pushnumber(L, now.tv_sec);
+
+    return 1;
+}
+
 static int lua_now(lua_State* L)
 {
     uv_timespec64_t now;
@@ -452,6 +463,24 @@ static int lua_now(lua_State* L)
     *timespec = now;
 
     luaL_getmetatable(L, kInstantType);
+    lua_setmetatable(L, -2);
+
+    return 1;
+}
+
+static int lua_systemNow(lua_State* L)
+{
+
+    uv_timespec64_t now;
+
+    [[maybe_unused]] int status = uv_clock_gettime(UV_CLOCK_REALTIME, &now);
+    assert(status == 0);
+
+    uv_timespec64_t* timespec = static_cast<uv_timespec64_t*>(lua_newuserdatatagged(L, sizeof(uv_timespec64_t), kSystemInstanceTag));
+
+    *timespec = now;
+
+    luaL_getmetatable(L, kSystemInstanceType);
     lua_setmetatable(L, -2);
 
     return 1;
@@ -552,6 +581,7 @@ void init_duration_lib(lua_State* L)
 
 static void init_instant_lib(lua_State* L)
 {
+
     // metatable is in stack spot 1
     luaL_newmetatable(L, kInstantType);
 
@@ -590,10 +620,39 @@ static void init_instant_lib(lua_State* L)
     lua_pop(L, 1);
 }
 
+static void init_system_instant_lib(lua_State* L)
+{
+
+    luaL_newmetatable(L, kSystemInstanceType);
+
+    lua_pushstring(L, "The metatable is locked");
+    lua_setfield(L, -2, "__metatable");
+
+    lua_pushstring(L, kSystemInstanceType);
+    lua_setfield(L, -2, "__type");
+
+    lua_createtable(L, 0, 2);
+
+    lua_pushnumber(L, 100);
+    lua_setfield(L, -2, "test");
+
+    lua_pushcfunction(L, system_instance_unix, "SystemInstance__unix");
+    lua_setfield(L, -2, "unix");
+
+    lua_setfield(L, -2, "__index");
+
+    lua_setreadonly(L, -1, 1);
+
+    lua_setreadonly(L, -1, 1);
+
+    lua_pop(L, 1);
+}
+
 static int init_luau_lib(lua_State* L)
 {
     init_instant_lib(L);
     init_duration_lib(L);
+    init_system_instant_lib(L);
 
     return 0;
 }
@@ -603,6 +662,7 @@ const char* const Time::properties[] = {kDurationLibraryIdentifier};
 const luaL_Reg Time::lib[] = {
     {"now", lua_now},
     {"since", lua_since},
+    {"systemNow", lua_systemNow},
     {nullptr, nullptr},
 };
 
