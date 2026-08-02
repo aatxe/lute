@@ -23,6 +23,14 @@ function systemInstance.unix(): number
 	error("not implemented")
 end
 
+function systemInstance.unixMilliseconds(): number
+	error("not implemented")
+end
+
+function systemInstance.unixNanoseconds(): number
+	error("not implemented")
+end
+
 time.duration = {}
 
 --- Creates a `Duration` from `seconds` and a fractional `subsecnanos` nanosecond component.

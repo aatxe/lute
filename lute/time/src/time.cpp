@@ -440,13 +440,29 @@ int lua_weeks(lua_State* L)
 
 } // namespace duration
 
+static int system_instance_unix_nanoseconds(lua_State* L)
+{
+    auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
+
+    lua_pushnumber(L, getNanosecondsFromTimespec(timespec));
+
+    return 1;
+}
+
+static int system_instance_unix_milliseconds(lua_State* L)
+{
+    auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
+
+    lua_pushnumber(L, static_cast<double>(timespec.tv_sec) * MILLISECONDS_PER_SECOND + timespec.tv_nsec / NANOSECONDS_PER_MILLISECOND);
+
+    return 1;
+}
 
 static int system_instance_unix(lua_State* L)
 {
+    auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
 
-    auto now = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
-
-    lua_pushnumber(L, now.tv_sec);
+    lua_pushnumber(L, timespec.tv_sec);
 
     return 1;
 }
@@ -622,7 +638,6 @@ static void init_instant_lib(lua_State* L)
 
 static void init_system_instant_lib(lua_State* L)
 {
-
     luaL_newmetatable(L, kSystemInstanceType);
 
     lua_pushstring(L, "The metatable is locked");
@@ -631,13 +646,16 @@ static void init_system_instant_lib(lua_State* L)
     lua_pushstring(L, kSystemInstanceType);
     lua_setfield(L, -2, "__type");
 
-    lua_createtable(L, 0, 2);
-
-    lua_pushnumber(L, 100);
-    lua_setfield(L, -2, "test");
+    lua_createtable(L, 0, 3);
 
     lua_pushcfunction(L, system_instance_unix, "SystemInstance__unix");
     lua_setfield(L, -2, "unix");
+
+    lua_pushcfunction(L, system_instance_unix_milliseconds, "SystemInstance__unixMilliseconds");
+    lua_setfield(L, -2, "unixMilliseconds");
+
+    lua_pushcfunction(L, system_instance_unix_nanoseconds, "SystemInstance__unixNanoseconds");
+    lua_setfield(L, -2, "unixNanoseconds");
 
     lua_setfield(L, -2, "__index");
 
