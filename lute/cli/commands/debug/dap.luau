@@ -112,15 +112,35 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				line = breakpoint.line,
 			})
 		end,
+		onException = function(thread: debugger.Thread, bpId: number, message: string)
+			ioSession.writeEvent("stopped", {
+				reason = "exception",
+				threadId = thread.id,
+				allThreadsStopped = true,
+				text = message,
+				hitBreakpointIds = { bpId },
+			})
+		end,
+		onSourceLoad = function(source: string)
+			local dapSource = createSource(source)
+			if dapSource then
+				ioSession.writeEvent("loadedSource", { reason = "new", source = dapSource })
+			end
+		end,
 	}
 	local configurationDone = false
 	local launchConfig: dapTypes.LaunchArgs? = nil
 	local launchSeq = -1
+	local canInvalidate = false
 	while true do
 		local request = ioSession.readDap()
 		local command = request.command :: string
 		local reqSeq = request.seq :: number
 		if command == "initialize" then
+			local args = request.arguments :: json.Object
+			if args.supportsInvalidatedEvent then
+				canInvalidate = true
+			end
 			local capabilities = {
 				supportsConfigurationDoneRequest = true,
 				supportsTerminateRequest = true,
@@ -131,6 +151,22 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				supportsConditionalBreakpoints = true,
 				supportsHitConditionalBreakpoints = true,
 				supportsLogPoints = true,
+				exceptionBreakpointFilters = {
+					{
+						filter = "uncaught",
+						label = "Uncaught Exceptions",
+						description = "Stop debugger at all points where an uncaught exception is thrown",
+						default = true,
+					},
+					{
+						filter = "caught",
+						label = "Caught Exceptions",
+						description = "Stop debugger at all points where a caught exception is thrown in a pcall()/xpcall()",
+						default = false,
+					},
+				},
+				supportsSetVariable = true,
+				supportsSetExpression = true,
 			}
 			ioSession.writeResponse(reqSeq, true, command, nil, capabilities)
 			ioSession.writeEvent("initialized")
@@ -155,6 +191,38 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			local newBreakpoints = args.breakpoints :: { dapTypes.SourceBreakpoint }?
 			local requestedBreakpoints = clearAndSetBreakpoints(target, path, newBreakpoints)
 
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				breakpoints = requestedBreakpoints,
+			})
+		elseif command == "setExceptionBreakpoints" then
+			local args = request.arguments :: json.Object
+			local filters = args.filters :: { string }
+			local uncaught = false
+			local caught = false
+			for _, filter in filters do
+				if filter == "uncaught" then
+					uncaught = true
+				end
+				if filter == "caught" then
+					caught = true
+				end
+			end
+			local exceptionInfo = target:setExceptionBreakpoint(uncaught, caught)
+			local requestedBreakpoints: { dapTypes.Breakpoint } = {}
+			for _, filter in filters do
+				if filter == "uncaught" then
+					table.insert(requestedBreakpoints, {
+						id = exceptionInfo.uncaughtId,
+						verified = true,
+					})
+				end
+				if filter == "caught" then
+					table.insert(requestedBreakpoints, {
+						id = exceptionInfo.caughtId,
+						verified = true,
+					})
+				end
+			end
 			ioSession.writeResponse(reqSeq, true, command, nil, {
 				breakpoints = requestedBreakpoints,
 			})
@@ -258,7 +326,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 					name = scope.name,
 					variablesReference = scope.variableRef,
 				}
-				if scope.type == "locals" then
+				if scope.type == "local" then
 					dapScopeItem.presentationHint = "locals"
 				end
 				table.insert(dapScope, dapScopeItem)
@@ -302,6 +370,48 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 					type = variable.type,
 					variablesReference = variable.variableRef,
 				})
+			end
+		elseif command == "setVariable" then
+			local args = request.arguments :: json.Object
+			local varRef = args.variablesReference :: number
+			local name = args.name :: string
+			local value = args.value :: string
+			local result = target:setVariable(varRef, name, value)
+			if type(result) == "string" then
+				ioSession.writeResponse(reqSeq, false, command, result)
+			else
+				local variable = result :: debugger.Variable
+				ioSession.writeResponse(reqSeq, true, command, nil, {
+					value = variable.value,
+					type = variable.type,
+					variablesReference = variable.variableRef,
+				})
+				if canInvalidate then
+					ioSession.writeEvent("invalidated", {
+						areas = { "variables", "stacks" },
+					})
+				end
+			end
+		elseif command == "setExpression" then
+			local args = request.arguments :: json.Object
+			local lExpr = args.expression :: string
+			local value = args.value :: string
+			local frameId = args.frameId :: number?
+			local result = target:setExpression(lExpr, value, frameId)
+			if type(result) == "string" then
+				ioSession.writeResponse(reqSeq, false, command, result)
+			else
+				local variable = result :: debugger.Variable
+				ioSession.writeResponse(reqSeq, true, command, nil, {
+					value = variable.value,
+					type = variable.type,
+					variablesReference = variable.variableRef,
+				})
+				if canInvalidate then
+					ioSession.writeEvent("invalidated", {
+						areas = { "variables", "stacks" },
+					})
+				end
 			end
 		elseif command == "terminate" or command == "disconnect" then
 			ioSession.writeResponse(reqSeq, true, command)

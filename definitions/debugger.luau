@@ -34,6 +34,14 @@ export type Breakpoint = {
 	status: BreakpointStatus,
 }
 
+--- Info about exception breakpoints and which ids they are using
+export type ExceptionBreakpointInfo = {
+	uncaughtExceptions: boolean,
+	uncaughtId: number,
+	caughtExceptions: boolean,
+	caughtId: number,
+}
+
 --- The type of step we are taking
 export type StepType = "stepIn" | "stepOut" | "stepOver"
 
@@ -122,6 +130,11 @@ export type LaunchConfig = {
 	onStepStop: ((thread: Thread, info: StepInfo) -> ())?,
 	--- called when we hit a log point `bp` and we are asked to log `message`
 	onLogpointHit: ((message: string, bp: Breakpoint) -> ())?,
+	--- called when hitting an exception on `thread`. `bpId` reflects the id of the bp hit. These ids
+	--- match what is returned by setExceptionBreakpoint. `message` is the message thrown by the exception.
+	onException: ((thread: Thread, bpId: number, message: string) -> ())?,
+	--- called when we load a source `source` (using absolute path)
+	onSourceLoad: ((source: string) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
@@ -141,6 +154,9 @@ export type Target = {
 	getBreakpointById: (self: Target, id: number) -> Breakpoint?,
 	--- Get a breakpoint at a `sourcePath` at a given line. Returns `nil` if not found.
 	getBreakpointBySourceLine: (self: Target, sourcePath: string, line: number) -> Breakpoint?,
+	--- Sets/removes whether we hit exception breakpoints for uncaught or caught exceptions based on the
+	--- booleans `uncaught` and `caught`. Returns a sumamry of the current exception bp state.
+	setExceptionBreakpoint: (self: Target, uncaught: boolean, caught: boolean) -> ExceptionBreakpointInfo,
 	--- Gets all Luau sources that have been loaded onto the debugger, with sources using forward slashes.
 	getLoadedSources: (self: Target) -> { string },
 	--- Launch a Luau script at at `sourcePath` with the relevant `args` and callbacks defined in `config`.
@@ -197,6 +213,15 @@ export type Target = {
 	--- If `frameId` is -1 or absent, evaluate in the global scope.
 	--- Returns a `Variable` if expression could be evaluated or an error string if not.
 	evaluateExpression: (self: Target, expression: string, frameId: number?) -> Variable | string,
+	--- Sets a variable named `name` within the scope with reference `variableRef` equal to the value
+	--- that `setExpression` evaluates to. If this operation is not successful, it returns an error string.
+	--- Otherwise, it returns a `Variable` containing the new value.
+	setVariable: (self: Target, varRef: number, varName: string, setExpression: string) -> Variable | string,
+	--- Sets `lExpression` equal to to the value that `setExpression` evaluates to.
+	--- This is done within the scope of the stack frame with `frameID`. If `frameId` is absent or -1,
+	--- we are in the global scope. If this operation is not successful, it returns an error string.
+	--- Otherwise, it returns a `Variable` containing the new value.
+	setExpression: (self: Target, lExpression: string, setExpression: string, frameID: number?) -> Variable | string,
 }
 
 --- Create a new Target handle on the current VM.
