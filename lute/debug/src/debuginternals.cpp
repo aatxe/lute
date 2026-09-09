@@ -94,7 +94,6 @@ ExceptionBreakpointInfo::ExceptionBreakpointInfo(bool uncaughtExceptions, bool c
 Target::Target(Runtime& parentRuntime)
     : parentRuntime(parentRuntime)
     , exceptionBpInfo(false, false)
-    , loadedSources("")
 {
 }
 
