@@ -154,9 +154,9 @@ export type SystemInstance = setmetatable<Frozen, {
 	read __metatable: "The metatable is locked!",
 	read __index: typeof(table.freeze(systemInstance)),
 	read __sub: (SystemInstance, SystemInstance) -> Duration,
-	read __eq: (SystemInstance, SystemInstance) -> Duration,
-	read __lt: (SystemInstance, SystemInstance) -> Duration,
-	read __le: (SystemInstance, SystemInstance) -> Duration
+	read __eq: (SystemInstance, SystemInstance) -> boolean,
+	read __lt: (SystemInstance, SystemInstance) -> boolean,
+	read __le: (SystemInstance, SystemInstance) -> boolean
 }>
 
 return time
