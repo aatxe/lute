@@ -440,6 +440,11 @@ int lua_weeks(lua_State* L)
 
 } // namespace duration
 
+static uv_timespec64_t getTimeSpecFromSystemInstance(lua_State* L, int idx)
+{
+    return *static_cast<uv_timespec64_t*>(luaL_checkudata(L, idx, kSystemInstanceType));
+}
+
 static int system_instance_unix_nanoseconds(lua_State* L)
 {
     auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
@@ -451,7 +456,7 @@ static int system_instance_unix_nanoseconds(lua_State* L)
 
 static int system_instance_unix_milliseconds(lua_State* L)
 {
-    auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
+    auto timespec = getTimeSpecFromSystemInstance(L, 1);
 
     lua_pushnumber(L, static_cast<double>(timespec.tv_sec) * MILLISECONDS_PER_SECOND + timespec.tv_nsec / NANOSECONDS_PER_MILLISECOND);
 
@@ -460,10 +465,45 @@ static int system_instance_unix_milliseconds(lua_State* L)
 
 static int system_instance_unix(lua_State* L)
 {
-    auto timespec = *static_cast<uv_timespec64_t*>(luaL_checkudata(L, 1, kSystemInstanceType));
+    auto timespec = getTimeSpecFromSystemInstance(L, 1);
 
     lua_pushnumber(L, timespec.tv_sec);
 
+    return 1;
+}
+
+static int system_instance__sub(lua_State* L)
+{
+    auto left = getTimeSpecFromSystemInstance(L, 1);
+    auto right = getTimeSpecFromSystemInstance(L, 2);
+
+    return createDurationFromSeconds(L, static_cast<double>(diffTimespecs(left, right)));
+}
+
+static int system_instance__eq(lua_State* L)
+{
+    auto left = getTimeSpecFromSystemInstance(L, 1);
+    auto right = getTimeSpecFromSystemInstance(L, 2);
+
+    lua_pushboolean(L, left.tv_sec == right.tv_sec && left.tv_nsec == right.tv_nsec);
+    return 1;
+}
+
+static int system_instant__lt(lua_State* L)
+{
+    auto left = getTimeSpecFromSystemInstance(L, 1);
+    auto right = getTimeSpecFromSystemInstance(L, 2);
+
+    lua_pushboolean(L, left.tv_sec < right.tv_sec || (left.tv_sec == right.tv_sec && left.tv_nsec < right.tv_nsec));
+    return 1;
+}
+
+static int system_instant__le(lua_State* L)
+{
+    auto left = getTimeSpecFromSystemInstance(L, 1);
+    auto right = getTimeSpecFromSystemInstance(L, 2);
+
+    lua_pushboolean(L, left.tv_sec < right.tv_sec || (left.tv_sec == right.tv_sec && left.tv_nsec <= right.tv_nsec));
     return 1;
 }
 
@@ -646,6 +686,18 @@ static void init_system_instant_lib(lua_State* L)
     lua_pushstring(L, kSystemInstanceType);
     lua_setfield(L, -2, "__type");
 
+    lua_pushcfunction(L, system_instance__sub, "SystemInstance__sub");
+    lua_setfield(L, -2, "__sub");
+
+    lua_pushcfunction(L, system_instance__eq, "SystemInstance__eq");
+    lua_setfield(L, -2, "__eq");
+
+    lua_pushcfunction(L, system_instant__lt, "SystemInstance__lt");
+    lua_setfield(L, -2, "__lt");
+
+    lua_pushcfunction(L, system_instant__le, "SystemInstance__le");
+    lua_setfield(L, -2, "__le");
+
     lua_createtable(L, 0, 3);
 
     lua_pushcfunction(L, system_instance_unix, "SystemInstance__unix");
@@ -657,9 +709,9 @@ static void init_system_instant_lib(lua_State* L)
     lua_pushcfunction(L, system_instance_unix_nanoseconds, "SystemInstance__unixNanoseconds");
     lua_setfield(L, -2, "unixNanoseconds");
 
-    lua_setfield(L, -2, "__index");
-
     lua_setreadonly(L, -1, 1);
+
+    lua_setfield(L, -2, "__index");
 
     lua_setreadonly(L, -1, 1);
 
