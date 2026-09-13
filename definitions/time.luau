@@ -156,7 +156,7 @@ export type SystemInstance = setmetatable<Frozen, {
 	read __sub: (SystemInstance, SystemInstance) -> Duration,
 	read __eq: (SystemInstance, SystemInstance) -> boolean,
 	read __lt: (SystemInstance, SystemInstance) -> boolean,
-	read __le: (SystemInstance, SystemInstance) -> boolean
+	read __le: (SystemInstance, SystemInstance) -> boolean,
 }>
 
 return time
